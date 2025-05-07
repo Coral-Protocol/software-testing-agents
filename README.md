@@ -1,4 +1,4 @@
-# Software Testing Agents with CAMEL
+# Software Testing Agents with LangChain
 
 In this example, we implement a minimal multi-agent software testing system using LangChain, where agents collaboratively test pull request (PR) code against existing unit tests.
 
