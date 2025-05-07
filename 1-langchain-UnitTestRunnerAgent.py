@@ -97,7 +97,7 @@ async def create_unit_test_runner_agent(client, tools):
         max_tokens=8192  # or 16384, 32768 depending on your needs; for gpt-4o-mini, make sure prompt + history + output < 128k tokens
     )
 
-    #model = ChatOllama(model="llama3")
+    #model = ChatOllama(model="qwen3:latest")
 
     agent = create_tool_calling_agent(model, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=True)
