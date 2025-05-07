@@ -7,6 +7,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain.tools import Tool
+from langchain_community.llms import Ollama
 from dotenv import load_dotenv
 from anyio import ClosedResourceError
 import urllib.parse
@@ -51,15 +52,15 @@ async def create_interface_agent(client, tools):
             2. Create a thread using create_thread (threadName: 'User Interaction Thread', creatorId: 'user_interaction_agent', participantIds: ['user_interaction_agent']). Store threadId. Retry once on failure, otherwise stop and report: 'Error creating thread.'
             3. Send message: 'I am ready to receive testing instructions.' Retry once on failure, otherwise send: 'Error sending readiness message.'
 
-            **Loop**:
+            **Loop (STRICTLY follow each step, NEVER skip any step)**:
             1. Use ask_human to ask: 'What instructions do you have for me?'
             2. If message contains 'unit test', 'PR', or 'diff', proceed as follows:
             - Check if 'codediff_review_agent' is registered. If so, call add_participant to add it to the thread. If failed, send: 'Error adding Code Diff Review Agent.'
             - Check if 'unit_test_runner_agent' is registered. If so, call add_participant. If failed, send: 'Error adding Unit Test Runner Agent.'
             - Send message to codediff_review_agent: 'Analyze the diff between ./user_code/calculator.py and ./user_code/calculator_PR.py.' Mention the agent.
-            - **call wait_for_mentions up to 10 times (agentId: 'user_interaction_agent', timeoutMs: 8000) or until messages are received.** Parse the diff result and extract function names affected (e.g., test_multiply).
+            - **KEEP calling wait_for_mentions (agentId: 'user_interaction_agent', timeoutMs: 8000) or until messages are received.** Parse the diff result and extract function names affected (e.g., test_multiply).
             - Send message: 'Please run unit test: [test_name]' to unit_test_runner_agent. Mention the agent.
-            - **call wait_for_mentions up to 10 times (agentId: 'user_interaction_agent', timeoutMs: 8000) or until messages are received.**
+            - **KEEP calling wait_for_mentions (agentId: 'user_interaction_agent', timeoutMs: 8000) or until messages are received.**
             - Format results as 'Test result: [status]\nOutput:\n[output]'.
             - Send the result to the thread via send_message (content: [formatted results], mentions: []). If send_message fails, retry once. If it fails again, send: 'Error sending test results.'
             - Send a confirmation message to the thread with send_message (content: 'Task completed.', mentions: []). 
@@ -87,11 +88,14 @@ async def create_interface_agent(client, tools):
         max_tokens=4096
     )
 
+    #model = Ollama(model="llama3")
+
     agent = create_tool_calling_agent(model, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=True)
 
 async def main():
-    max_retries = 3
+    max_retries = 5
+    retry_delay = 5  # seconds
     for attempt in range(max_retries):
         try:
             async with MultiServerMCPClient(
@@ -116,8 +120,8 @@ async def main():
         except ClosedResourceError as e:
             logger.error(f"ClosedResourceError on attempt {attempt + 1}: {e}")
             if attempt < max_retries - 1:
-                logger.info("Retrying in 5 seconds...")
-                await asyncio.sleep(5)
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
                 continue
             else:
                 logger.error("Max retries reached. Exiting.")
@@ -125,8 +129,8 @@ async def main():
         except Exception as e:
             logger.error(f"Unexpected error on attempt {attempt + 1}: {e}")
             if attempt < max_retries - 1:
-                logger.info("Retrying in 5 seconds...")
-                await asyncio.sleep(5)
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
                 continue
             else:
                 logger.error("Max retries reached. Exiting.")

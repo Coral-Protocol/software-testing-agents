@@ -10,6 +10,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.tools import tool
+from langchain_community.llms import Ollama
 from dotenv import load_dotenv
 from anyio import ClosedResourceError
 import urllib.parse
@@ -89,7 +90,15 @@ async def create_unit_test_runner_agent(client, tools):
         ("placeholder", "{agent_scratchpad}")
     ])
 
-    model = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"), temperature=0.3, max_tokens=4096)
+    model = ChatOpenAI(
+        model="gpt-4o-mini",
+        api_key=os.getenv("OPENAI_API_KEY"),
+        temperature=0.3,
+        max_tokens=4096
+    )
+
+    #model = Ollama(model="llama3")
+
     agent = create_tool_calling_agent(model, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=True)
 
