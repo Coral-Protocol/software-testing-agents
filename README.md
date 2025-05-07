@@ -79,10 +79,6 @@ The Interface Agent will coordinate with the CodeDiffReviewAgent to determine th
 
 ---
 
-是的，既然这个问题已经解决，就应该更新 `README` 的 Troubleshooting 部分来反映当前状态，避免误导用户。以下是更新后的更简洁版本，你可以直接替换原有的 `## Troubleshooting` 部分：
-
----
-
 ## 🛠️ Troubleshooting
 
 ### ✅ Known Issue (Resolved)
