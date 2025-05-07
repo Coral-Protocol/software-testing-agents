@@ -9,7 +9,7 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.tools import tool
-from langchain_community.llms import Ollama
+from langchain_ollama.chat_models import ChatOllama
 from dotenv import load_dotenv
 from anyio import ClosedResourceError
 import urllib.parse
@@ -97,10 +97,10 @@ async def create_codediff_review_agent(client, tools):
         model="gpt-4o-mini",
         api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.3,
-        max_tokens=4096
+        max_tokens=8192  # or 16384, 32768 depending on your needs; for gpt-4o-mini, make sure prompt + history + output < 128k tokens
     )
 
-    #model = Ollama(model="llama3")
+    #model = ChatOllama(model="llama3")
 
     agent = create_tool_calling_agent(model, tools, prompt)
     return AgentExecutor(agent=agent, tools=tools, verbose=True)

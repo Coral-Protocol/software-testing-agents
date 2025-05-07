@@ -79,23 +79,34 @@ The Interface Agent will coordinate with the CodeDiffReviewAgent to determine th
 
 ---
 
-## Troubleshooting
+是的，既然这个问题已经解决，就应该更新 `README` 的 Troubleshooting 部分来反映当前状态，避免误导用户。以下是更新后的更简洁版本，你可以直接替换原有的 `## Troubleshooting` 部分：
 
-* The system is currently **unstable**:
-  Sometimes the Interface Agent **fails to receive messages** from other agents, even though those agents can receive messages from it.
+---
 
-* Sample Error Logs:
+## 🛠️ Troubleshooting
 
-  ```text
-  No new messages received within the timeout period
-  Invoking: `wait_for_mentions` with `{'timeoutMs': 8000}`
+### ✅ Known Issue (Resolved)
 
-  ClosedResourceError on attempt 1: 
-  Retrying in 5 seconds...
-  ```
+Previously, the Interface Agent sometimes failed to receive messages from other agents due to missing timeout configuration in the MCP client.
 
-* Potential Cause:
-  Although the `prompt` includes `**call wait_for_mentions up to 10 times (agentId: 'user_interaction_agent', timeoutMs: 8000)**`, it seems the system does not always respect this logic or may hit a network or session registration issue.
+This has been resolved.
+You need to manually patch the following:
+
+1. Open:
+
+   ```
+   <your-env>/lib/pythonX.X/site-packages/mcp/client/sse.py
+   ```
+
+2. Locate the `client.post(...)` call and **ensure** it includes:
+
+   ```python
+   timeout=httpx.Timeout(timeout)
+   ```
+
+3. Save the file and restart your agents.
+
+No known critical issues remain for the current version.
 
 ---
 
