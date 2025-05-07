@@ -10,6 +10,16 @@ The use case is currently in an early stage and focuses on local testing for a s
 
 ---
 
+## Prerequisite
+
+Before running this example, make sure to **clone the Coral MCP server**:
+
+```bash
+git clone https://github.com/Coral-Protocol/coral-server.git
+```
+
+---
+
 ## Running the Example
 
 ### 1. Install the dependencies
