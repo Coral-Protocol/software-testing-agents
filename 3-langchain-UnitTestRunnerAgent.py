@@ -24,7 +24,7 @@ load_dotenv()
 
 base_url = "http://localhost:5555/devmode/exampleApplication/privkey/session1/sse"
 params = {
-    "waitForAgents": 2,
+    "waitForAgents": 4,
     "agentId": "unit_test_runner_agent",
     "agentDescription": "You are unit_test_runner_agent, responsible for executing a specific pytest test based on function name"
 }
@@ -40,23 +40,34 @@ def get_tools_description(tools):
     return "\n".join(f"Tool: {t.name}, Schema: {json.dumps(t.args).replace('{', '{{').replace('}', '}}')}" for t in tools)
 
 @tool
-def run_test(test_name: str) -> dict:
+def run_test(project_root: str, relative_test_path: str, test_name: str) -> dict:
     """
-    Run a specific pytest unit test function from the test_calculator.py file.
+    Run a specific pytest unit test function from a test file within a project directory.
 
     Args:
+        project_root (str): Absolute path to the project root directory.
+        relative_test_path (str): Path to the test file relative to the project root.
         test_name (str): Name of the test function to run (e.g., 'test_add', 'test_subtract', 'test_multiply').
 
     Returns:
         dict: Contains 'result' message, 'output' (full pytest output), and 'status' (True if passed).
     """
+    if not os.path.isabs(project_root):
+        raise ValueError("project_root must be an absolute path.")
 
-    test_path = f"tests/test_calculator.py::{test_name}"
-    command = ["pytest", test_path]
-    env = {"PYTHONPATH": "."}
+    abs_test_path = os.path.join(project_root, relative_test_path)
 
-    print(f"Running: pytest {test_path}")
-    result = subprocess.run(command, env={**env, **dict(**os.environ)}, capture_output=True, text=True)
+    if not os.path.exists(abs_test_path):
+        raise FileNotFoundError(f"Test file does not exist: {abs_test_path}")
+
+    pytest_target = f"{relative_test_path}::{test_name}"
+
+    command = ["pytest", pytest_target]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = project_root
+
+    print(f"Running pytest: {pytest_target}")
+    result = subprocess.run(command, cwd=project_root, env=env, capture_output=True, text=True)
 
     print("--- Pytest Output ---")
     print(result.stdout)
@@ -72,26 +83,39 @@ def run_test(test_name: str) -> dict:
 
 async def create_unit_test_runner_agent(client, tools):
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"""You are unit_test_runner_agent, responsible for executing a specific pytest test based on function name.
+        ("system", f"""You are unit_test_runner_agent, responsible for executing a specific pytest unit test given the project root path, test file, and test function name.
 
         **Initialization**:
         1. Ensure you are registered using list_agents. If not, register using:
-        register_agent(agentId: 'unit_test_runner_agent', agentName: 'Unit Test Runner Agent', description: 'Runs specified pytest unit tests and returns results.')
+        register_agent(agentId: 'unit_test_runner_agent', agentName: 'Unit Test Runner Agent', description: 'Runs a specified pytest unit test and returns structured results.')
 
         **Loop**:
-        1. Call wait_for_mentions ONCE (agentId: 'unit_test_runner_agent', timeoutMs: 8000).
-        2. For mentions from 'user_interaction_agent' containing 'Please run unit test: [test_name]':
-        - Extract test name (e.g., test_multiply)
-        - Call run_test(test_name) from your tools.
-        - Send test results or error to the mentioned thread via send_message (senderId: 'unit_test_runner_agent', mentions: ['user_interaction_agent']).
-        3. If input is invalid or missing, do nothing and continue loop.
+        1. Call wait_for_mentions ONCE (agentId: 'unit_test_runner_agent', timeoutMs: 30000).
+
+        2. For mentions from 'user_interaction_agent' containing:  
+        "Please run unit test '[test_name]' located in '[relative_test_path]' under project root '[project_root]'":
+        - Extract the following:
+            - test_name (e.g., 'test_multiply')
+            - relative_test_path (e.g., 'tests/test_calculator.py') from the test file path
+            - project_root (e.g., '/tmp/octocat/calculator') from the GitCloneAgent result
+        - Call run_test(project_root, relative_test_path, test_name) from your tools.
+            - If the tool fails (e.g., file not found), send the error message via send_message (senderId: 'unit_test_runner_agent', mentions: ['user_interaction_agent']).
+        - Format reply as:
+            ```
+            Test result: [status]
+            Output:
+            [pytest stdout]
+            ```
+        - Send the result via send_message (senderId: 'unit_test_runner_agent', mentions: ['user_interaction_agent']).
+
+        3. If the mention format is invalid or missing, continue the loop silently.
 
         Do not create threads. Track threadId from mentions. Tools: {get_tools_description(tools)}"""),
         ("placeholder", "{agent_scratchpad}")
     ])
 
     model = ChatOpenAI(
-        model="gpt-4o-mini",
+        model="gpt-4.1-mini-2025-04-14",
         api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.3,
         max_tokens=8192  # or 16384, 32768 depending on your needs; for gpt-4o-mini, make sure prompt + history + output < 128k tokens

@@ -1,115 +1,110 @@
 # Software Testing Agents with LangChain
 
-In this example, we implement a minimal multi-agent software testing system using LangChain, where agents collaboratively test pull request (PR) code against existing unit tests.
+This example demonstrates a minimal multi-agent software testing system built using LangChain and the Coral Protocol. Agents collaborate to fetch, analyze, and test pull requests (PRs) against existing unit tests.
 
-The use case is currently in an early stage and focuses on local testing for a simple calculator. It involves three agents working together:
-
-* **Interface Agent**: Accepts user instructions and coordinates with other agents.
-* **CodeDiffReviewAgent**: Analyzes code differences between the original and PR version, and identifies which functions have changed.
-* **UnitTestRunnerAgent**: Runs the appropriate unit tests based on the changed parts identified by the CodeDiffReviewAgent.
+The current use case demonstrates a simple example of testing a pull request (PR) made to this repository: [https://github.com/renxinxing123/software-testing-code](https://github.com/renxinxing123/software-testing-code). It is designed as a minimal working demo and can be extended to support more complex codebases.
 
 ---
 
-## Prerequisite
+## Overview of Agents
 
-Before running this example, make sure to **clone the Coral MCP server**:
+The system consists of four cooperating agents, each with a specific responsibility:
+
+* **Interface Agent**
+  Accepts user instructions, manages the workflow, and coordinates other agents.
+
+* **GitCloneAgent**
+  Clones the GitHub repository and checks out the specific pull request branch.
+
+* **CodeDiffReviewAgent**
+  Analyzes the PR diff, identifies the changed function, maps it to the corresponding test function, and locates the test file path.
+
+* **UnitTestRunnerAgent**
+  Runs the specified unit test using `pytest` and returns structured test results.
+
+---
+
+## Prerequisites
+
+Before running this project, clone the [Coral MCP server](https://github.com/Coral-Protocol/coral-server):
 
 ```bash
 git clone https://github.com/Coral-Protocol/coral-server.git
 ```
 
+Make sure you have:
+
+* Python 3.9 or above
+* A valid `OPENAI_API_KEY` exported in your environment
+* A valid `GITHUB_ACCESS_TOKEN` exported in your environment
+
 ---
 
 ## Running the Example
 
-### 1. Install the dependencies
-
-Make sure you have Python 3.9+ installed. Then run:
+### 1. Install Dependencies
 
 ```bash
-pip install langchain-mcp-adapters langchain-openai worldnewsapi langchain langchain-core
+pip install langchain-mcp-adapters langchain-openai worldnewsapi langchain langchain-core PyGithub
 ```
+
 ---
 
 ### 2. Start the MCP Server
 
-If you haven't already, clone the MCP repo and navigate to the project root:
+Navigate to the `coral-server` directory and run:
 
 ```bash
 ./gradlew run
 ```
 
-> ⚠️ Note: Gradle may appear to hang at "83%", but the server is actually running. Check your terminal logs to confirm.
+Note: Gradle may appear to stall at 83%, but the server is running. Check terminal logs to confirm.
 
 ---
 
-### 3. Run the Agents
-
-Make sure you have your `OPENAI_API_KEY` exported in your terminal environment.
-In **three separate terminals**, run the following:
+### 3. Launch Agents (in four separate terminals)
 
 ```bash
-# Terminal 1
+# Terminal 1: Interface Agent
 python 0-langchain-interface.py
 ```
 
 ```bash
-# Terminal 2
-python 1-langchain-UnitTestRunnerAgent.py
+# Terminal 2: GitClone Agent
+python 1-langchain-GitCloneAgent.py
 ```
 
 ```bash
-# Terminal 3
+# Terminal 3: CodeDiffReview Agent
 python 2-langchain-CodeDiffReviewAgent.py
 ```
 
----
-
-### 4. Interact with the Agents
-
-Once all agents are running, you can send a query via STDIN to the Interface Agent terminal.
-
-Try something like:
-
+```bash
+# Terminal 4: UnitTestRunner Agent
+python 3-langchain-UnitTestRunnerAgent.py
 ```
-Please execute the unit test for the PR code.
-```
-
-The Interface Agent will coordinate with the CodeDiffReviewAgent to determine the code changes, and then with the UnitTestRunnerAgent to execute relevant unit tests.
 
 ---
 
-## 🛠️ Troubleshooting
+### 4. Interact with the System
 
-### ✅ Known Issue (Resolved)
+Once all agents are running, interact with the Interface Agent via standard input.
 
-Previously, the Interface Agent sometimes failed to receive messages from other agents due to missing timeout configuration in the MCP client.
+Example instruction:
 
-This has been resolved.
-You need to manually patch the following:
-
-1. Open:
-
-   ```
-   <your-env>/lib/pythonX.X/site-packages/mcp/client/sse.py
-   ```
-
-2. Locate the `client.post(...)` call and **ensure** it includes:
-
-   ```python
-   timeout=httpx.Timeout(timeout)
-   ```
-
-3. Save the file and restart your agents.
-
-No known critical issues remain for the current version.
+```
+Please execute the unit test for the '1' PR in repo 'renxinxing123/software-testing-code'.
+```
 
 ---
 
 ## Get Involved
 
-This is an early-stage demo, and your feedback is welcome!
-If you have questions or suggestions, feel free to reach out.
+This is an early-stage prototype. Feedback and contributions are welcome.
 
 Discord: [https://discord.gg/cDzGHnzkwD](https://discord.gg/cDzGHnzkwD)
+
+---
+
+
 
