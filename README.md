@@ -15,12 +15,19 @@ The system consists of four cooperating agents, each with a specific responsibil
 
 * **GitCloneAgent**
   Clones the GitHub repository and checks out the specific pull request branch.
+  → Uses the `checkout_github_pr` tool to clone the repo and check out the PR branch using `git` commands.
 
 * **CodeDiffReviewAgent**
   Analyzes the PR diff, identifies the changed function, maps it to the corresponding test function, and locates the test file path.
+  → Uses the `get_pr_code_changes` tool built on top of the GitHub API via `PyGithub` to fetch the code diffs of the PR.
 
 * **UnitTestRunnerAgent**
   Runs the specified unit test using `pytest` and returns structured test results.
+  → Uses three tools:
+
+  * `list_project_files` to enumerate all project files,
+  * `read_project_files` to read test source code,
+  * `run_test` to execute the selected test with `pytest` and capture structured output.
 
 ---
 
@@ -90,13 +97,22 @@ python 3-langchain-UnitTestRunnerAgent.py
 
 Once all agents are running, interact with the Interface Agent via standard input.
 
-Example instruction:
+Example instructions:
 
 ```
-Please execute the unit test for the '1' PR in repo 'renxinxing123/software-testing-code'.
+Please execute the unit test for the '6' PR in repo 'renxinxing123/software-testing-code'.
 ```
+
+In this example, since **all functions in the PR were modified**, the Software Testing Agents intelligently executed **all available unit tests** to ensure full coverage.
+
+```
+Please execute the unit test for the '7' PR in repo 'renxinxing123/software-testing-code'.
+```
+
+In contrast, this PR only modified a **subset of functions**, so the UnitTestRunnerAgent **selectively executed only the relevant unit tests**. At the end of execution, it also **clearly reports which tests were skipped**, alerting users in case any critical tests were unintentionally omitted.
 
 ---
+
 
 ## Get Involved
 

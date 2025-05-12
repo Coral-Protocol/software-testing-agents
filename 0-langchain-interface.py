@@ -70,7 +70,7 @@ async def create_interface_agent(client, tools):
             - `pr_number` (e.g., 42)
 
             3. Check and add the following agents if needed:
-            - 'gitclone_agent' → if registered, call add_participant. On failure, send: 'Error adding Git Clone Agent.'
+            - 'gitclone_agent' → call add_participant. On failure, send: 'Error adding Git Clone Agent.'
             - 'codediff_review_agent' → call add_participant. On failure, send: 'Error adding Code Diff Review Agent.'
             - 'unit_test_runner_agent' → call add_participant. On failure, send: 'Error adding Unit Test Runner Agent.'
 
@@ -88,32 +88,56 @@ async def create_interface_agent(client, tools):
 
             7. KEEP calling wait_for_mentions (agentId: 'user_interaction_agent', timeoutMs: 30000) until messages are received.  
             - If no messages after 3 attempts, send: 'No response from codediff_review_agent.'  
-            - Extract from the response:
-                - `test_name` (e.g., test_multiply)
-                - `relative_test_path` (e.g., tests/test_calculator.py)
+            - Extract a list of (filename, patch snippet) pairs, e.g.:
+                ```
+                File: calculator.py
+                +def multiply(x, y): return x * y
+
+                File: utils/math.py
+                +def square(x): return x ** 2
+                ```
 
             8. Send message to `unit_test_runner_agent`:  
-            "Please run unit test '[test_name]' located in '[relative_test_path]' under project root '[project_root]'".  
+            "Please run relevant tests for the following code diffs under project root '[project_root]':
+
+            File: [filename_1]
+            [patch_1]
+
+            File: [filename_2]
+            [patch_2]
+            "  
             Use send_message (senderId: 'user_interaction_agent', mentions: ['unit_test_runner_agent']).
 
             9. KEEP calling wait_for_mentions (agentId: 'user_interaction_agent', timeoutMs: 30000) until messages are received.  
             - If no messages after 3 attempts, send: 'No response from unit_test_runner_agent.'  
-            - Extract:
-                - `status` (e.g., Test passed/Test failed)
-                - `output` (full pytest output)
+            - Extract full structured test report:
+                - Which test functions were run, their pass/fail status and outputs;
+                - Which test functions were skipped and not covered.
 
-            10. Format result as:
-                ```
-                Test result: [status]
-                Output:
-                [output]
-                ```
+            10. Format the result using this structure:
+            ````
+
+            Test results summary:
+
+            * File: \[test\_file\_1]
+            ✔ Run: test\_func\_1 → PASSED
+            Output:
+            \[pytest stdout]
+
+            ✘ Skipped: test\_func\_2, test\_func\_3 (Not triggered by current code changes)
+
+            * File: \[test\_file\_2]
+            ✔ Run: test\_func\_x → FAILED
+            Output:
+            \[pytest stdout]
+
+            ```
 
             11. Send the result to the thread using send_message (content: [formatted results], mentions: []).  
-                Retry once. If it fails again, send: 'Error sending test results.'
+            Retry once. If it fails again, send: 'Error sending test results.'
 
             12. Send a confirmation message using send_message (content: 'Task completed.', mentions: []).  
-                Retry once. If it fails again, send: 'Error sending task completion message.'
+            Retry once. If it fails again, send: 'Error sending task completion message.'
 
             13. Return to step 1.
 

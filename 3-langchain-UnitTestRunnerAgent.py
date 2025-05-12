@@ -14,6 +14,7 @@ from langchain_ollama.chat_models import ChatOllama
 from dotenv import load_dotenv
 from anyio import ClosedResourceError
 import urllib.parse
+from typing import Dict, List
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -38,6 +39,67 @@ if not os.getenv("OPENAI_API_KEY"):
 
 def get_tools_description(tools):
     return "\n".join(f"Tool: {t.name}, Schema: {json.dumps(t.args).replace('{', '{{').replace('}', '}}')}" for t in tools)
+
+@tool
+def list_project_files(root_path: str) -> List[str]:
+    """
+    Fetch all visible file paths under a project root directory.
+
+    Args:
+        root_path (str): Absolute or relative path to the root folder.
+
+    Returns:
+        List[str]: A list of file paths relative to the root directory provided.
+
+    Raises:
+        ValueError: If root_path does not exist or is not a directory.
+    """
+    if not os.path.isdir(root_path):
+        raise ValueError(f"Provided path '{root_path}' is not a directory or does not exist.")
+
+    file_list: List[str] = []
+    for dirpath, dirnames, filenames in os.walk(root_path):
+        # Exclude hidden directories
+        dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+        # Exclude hidden files
+        visible_files = [f for f in filenames if not f.startswith('.')]
+        for filename in visible_files:
+            full_path = os.path.join(dirpath, filename)
+            rel_path = os.path.relpath(full_path, root_path)
+            normalized = rel_path.replace(os.sep, '/')
+            file_list.append(normalized)
+
+    return file_list
+
+@tool
+def read_project_files(root_path: str, relative_paths: List[str]) -> Dict[str, str]:
+    """
+    Read multiple files under a project root directory.
+
+    Args:
+        root_path (str): The root directory of the project.
+        relative_paths (List[str]): A list of file paths relative to root_path.
+
+    Returns:
+        Dict[str, str]: A dictionary mapping each relative path to its file content.
+
+    Raises:
+        ValueError: If a constructed path does not exist or is not a file.
+        IOError: If an I/O error occurs while reading a file.
+    """
+    contents: Dict[str, str] = {}
+    for rel_path in relative_paths:
+        # Construct the absolute file path
+        full_path = os.path.normpath(os.path.join(root_path, rel_path))
+        if not os.path.isfile(full_path):
+            raise ValueError(f"File '{rel_path}' does not exist under '{root_path}'.")
+        # Read and store file content
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                contents[rel_path] = f.read()
+        except Exception as e:
+            raise IOError(f"Failed to read '{full_path}': {e}")
+    return contents
 
 @tool
 def run_test(project_root: str, relative_test_path: str, test_name: str) -> dict:
@@ -83,39 +145,80 @@ def run_test(project_root: str, relative_test_path: str, test_name: str) -> dict
 
 async def create_unit_test_runner_agent(client, tools):
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"""You are unit_test_runner_agent, responsible for executing a specific pytest unit test given the project root path, test file, and test function name.
+        ("system", f"""You are unit_test_runner_agent, responsible for determining and running appropriate pytest unit tests based on multiple code diffs and a given project root path.
 
         **Initialization**:
         1. Ensure you are registered using list_agents. If not, register using:
-        register_agent(agentId: 'unit_test_runner_agent', agentName: 'Unit Test Runner Agent', description: 'Runs a specified pytest unit test and returns structured results.')
+        register_agent(agentId: 'unit_test_runner_agent', agentName: 'Unit Test Runner Agent', description: 'Determines and runs relevant pytest unit tests given code diffs.')
 
         **Loop**:
         1. Call wait_for_mentions ONCE (agentId: 'unit_test_runner_agent', timeoutMs: 30000).
 
-        2. For mentions from 'user_interaction_agent' containing:  
-        "Please run unit test '[test_name]' located in '[relative_test_path]' under project root '[project_root]'":
-        - Extract the following:
-            - test_name (e.g., 'test_multiply')
-            - relative_test_path (e.g., 'tests/test_calculator.py') from the test file path
-            - project_root (e.g., '/tmp/octocat/calculator') from the GitCloneAgent result
-        - Call run_test(project_root, relative_test_path, test_name) from your tools.
-            - If the tool fails (e.g., file not found), send the error message via send_message (senderId: 'unit_test_runner_agent', mentions: ['user_interaction_agent']).
-        - Format reply as:
-            ```
-            Test result: [status]
-            Output:
-            [pytest stdout]
-            ```
-        - Send the result via send_message (senderId: 'unit_test_runner_agent', mentions: ['user_interaction_agent']).
+        2. For mentions from 'user_interaction_agent' containing:
+        "Please run relevant tests for the following code diffs under project root '[project_root]':
 
-        3. If the mention format is invalid or missing, continue the loop silently.
+        File: [diff_filename_1]
+        [diff_snippet_1]
 
-        Do not create threads. Track threadId from mentions. Tools: {get_tools_description(tools)}"""),
+        File: [diff_filename_2]
+        [diff_snippet_2]
+
+        ...":
+
+        - Extract:
+            - A list of tuples: `[(diff_filename_1, diff_snippet_1), (diff_filename_2, diff_snippet_2), ...]`
+            - `project_root` (absolute path)
+
+        3. Call `list_project_files(project_root)` to get all visible files.
+        4. Filter potential test files (e.g., under `tests/` or with `test_*.py` in filename).
+        5. Call `read_project_files(project_root, candidate_test_files)` to get file contents.
+        6. For each `(diff_filename, diff_snippet)`:
+        - Extract function or class names impacted.
+        - Identify corresponding test functions based on naming convention (e.g., `multiply → test_multiply`) or content match.
+        7. For each matched (test_file_path, test_function_name), call:
+        ```
+
+        run\_test(project\_root, test\_file\_path, test\_function\_name)
+
+        ```
+        and store results.
+
+        8. Additionally, for each test file, parse **all available test function names** (e.g., lines like `def test_*`), and compare with those actually executed.
+
+        **Output Format**:
+        Reply using:
+
+        ```
+
+        Test results summary:
+
+        * File: \[test\_file\_1]
+        ✔ Run: test\_func\_1 → PASSED
+        Output:
+        \[pytest stdout]
+
+        **✘ Skipped: test\_func\_2, test\_func\_3  (Not triggered by current code changes)**
+
+        * File: \[test\_file\_2]
+        ✔ Run: test\_func\_a → FAILED
+        Output:
+        \[pytest stdout]
+
+        **✘ Skipped: test\_func\_b  (Not triggered by current code changes)**
+
+        ```
+
+        9. Send the result using:
+        Call `send_message(senderId: 'unit_test_runner_agent', mentions: ['user_interaction_agent'])`
+
+        10. If the mention format is invalid or missing, continue the loop silently.
+
+        Do not create threads. Track `threadId` from mentions. Tools: {get_tools_description(tools)}"""),
         ("placeholder", "{agent_scratchpad}")
     ])
 
     model = ChatOpenAI(
-        model="gpt-4.1-mini-2025-04-14",
+        model="gpt-4.1-2025-04-14",
         api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.3,
         max_tokens=8192  # or 16384, 32768 depending on your needs; for gpt-4o-mini, make sure prompt + history + output < 128k tokens
@@ -136,7 +239,7 @@ async def main():
             async with MultiServerMCPClient(connections={
                 "coral": {"transport": "sse", "url": MCP_SERVER_URL, "timeout": 30, "sse_read_timeout": 60}
             }) as client:
-                tools = client.get_tools() + [run_test]
+                tools = client.get_tools() + [run_test, list_project_files, read_project_files]
                 logger.info(f"Connected to MCP server. Tools:\n{get_tools_description(tools)}")
                 retries = max_retries  # Reset retries on successful connection
                 await (await create_unit_test_runner_agent(client, tools)).ainvoke({})

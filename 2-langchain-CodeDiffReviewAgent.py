@@ -86,81 +86,50 @@ def get_pr_code_changes(repo_name: str, pr_number: int) -> List[Dict[str, str]]:
 
     return changes
 
-@tool
-def get_all_github_files(repo_name: str) -> List[str]:
-    """
-    Recursively retrieve all file paths from a GitHub repository.
-
-    Args:
-        repo_name (str): Full repository name in the format "owner/repo".
-
-    Returns:
-        List[str]: A list of all file paths in the repository.
-
-    Raises:
-        ValueError: If GITHUB_ACCESS_TOKEN is not set.
-        GithubException: On repository access or API failure.
-    """
-    token = os.getenv("GITHUB_ACCESS_TOKEN")
-    if not token:
-        raise ValueError("GITHUB_ACCESS_TOKEN environment variable is not set.")
-
-    gh = Github(token)
-
-    try:
-        repo = gh.get_repo(repo_name)
-    except GithubException as e:
-        raise GithubException(f"Failed to access repository '{repo_name}': {e.data}")
-
-    def get_all_file_paths(path: str = "") -> List[str]:
-        files: List[str] = []
-        contents = repo.get_contents(path)
-
-        if isinstance(contents, ContentFile):
-            files.append(contents.path)
-        else:
-            for content in contents:
-                if content.type == "dir":
-                    files.extend(get_all_file_paths(content.path))
-                else:
-                    files.append(content.path)
-        return files
-
-    return get_all_file_paths()
-
 async def create_codediff_review_agent(client, tools):
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"""You are codediff_review_agent, responsible for analyzing GitHub Pull Request diffs, identifying one modified function, suggesting its corresponding unit test, and locating the test file path.
+        ("system", f"""You are codediff_review_agent, responsible for retrieving all code diffs from a GitHub Pull Request and formatting them for further processing.
 
         **Initialization**:
         1. Ensure you are registered using list_agents. If not, register using:
-        register_agent(agentId: 'codediff_review_agent', agentName: 'Code Diff Review Agent', description: 'Analyzes GitHub PR diffs, identifies a modified function, suggests its unit test, and locates the test file path.')
+        register_agent(agentId: 'codediff_review_agent', agentName: 'Code Diff Review Agent', description: 'Fetches and formats code diffs from GitHub pull requests.')
 
         **Loop**:
         1. Call wait_for_mentions ONCE (agentId: 'codediff_review_agent', timeoutMs: 30000).
 
         2. For mentions from 'user_interaction_agent' containing:  
         "Analyze PR #[pr_number] from '[repo_name]'":
+
         - Extract:
-            - repo_name (e.g., 'octocat/calculator')
-            - pr_number (e.g., 42)
-        - Call get_pr_code_changes(repo_name, pr_number) from your tools.
-            - If the tool fails, send the error message via send_message (senderId: 'codediff_review_agent', mentions: ['user_interaction_agent']).
-        - For the first changed file's patch, extract the first modified function name (e.g., via lines starting with `+def `).
-        - Infer the corresponding unit test name using naming convention (e.g., multiply → test_multiply).
-        - Call get_all_github_files(repo_name) from your tools.
-            - Use the file list to find the relative path of the first test file likely containing the unit test (e.g., files under `tests/` or named `test_*.py`).
-        - Format reply as:
+            - `repo_name` (e.g., "octocat/calculator")
+            - `pr_number` (e.g., 42)
+
+        - Call `get_pr_code_changes(repo_name, pr_number)` to retrieve code diffs.
+
+        - If the tool fails (e.g., network or auth error), send the error message using:
+            `send_message(senderId: 'codediff_review_agent', mentions: ['user_interaction_agent'])`.
+
+        - For each changed file in the result:
+            - Extract:
+            - `filename` (e.g., "calculator.py")
+            - `patch` (diff content)
+
+        - Format the reply as:
             ```
-            Changed function(s): [function_name]
-            Suggested unit test: test_function_name
-            Test file path: [relative_test_path]
+            File: [filename_1]
+            [patch_1]
+
+            File: [filename_2]
+            [patch_2]
+
+            ...
             ```
-        - Send the result via send_message (senderId: 'codediff_review_agent', mentions: ['user_interaction_agent']).
+
+        - Send the result using `send_message(senderId: 'codediff_review_agent', mentions: ['user_interaction_agent'])`.
 
         3. If the mention format is invalid or parsing fails, continue the loop silently.
 
-        Do not create threads. Track threadId from mentions. Tools: {get_tools_description(tools)}"""),
+        4. Do not create threads. Track `threadId` from mentions. Tools: {get_tools_description(tools)}"""),
         ("placeholder", "{agent_scratchpad}")
     ])
 
@@ -186,7 +155,7 @@ async def main():
             async with MultiServerMCPClient(connections={
                 "coral": {"transport": "sse", "url": MCP_SERVER_URL, "timeout": 30, "sse_read_timeout": 60}
             }) as client:
-                tools = client.get_tools() + [get_pr_code_changes, get_all_github_files]
+                tools = client.get_tools() + [get_pr_code_changes]
                 logger.info(f"Connected to MCP server. Tools:\n{get_tools_description(tools)}")
                 retries = max_retries  # Reset retries on successful connection
                 await (await create_codediff_review_agent(client, tools)).ainvoke({})
