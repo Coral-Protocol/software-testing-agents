@@ -171,7 +171,7 @@ async def create_unit_test_runner_agent(client, tools):
 
         5. Call `read_project_files(project_root, candidate_test_files)` to get file contents.
 
-        6. 6. For each diff_filename that is relevant for unit testing, attempt to find a matching test file using heuristics (e.g., same filename prefix, or files under tests/ that import or reference the same module).
+        6. For each `diff_filename`  that is relevant for unit testing, attempt to find a matching test file using heuristics (e.g., same filename prefix, or files under tests/ that import or reference the same module). In some cases, the test file itself may appear entirely within the diff if it is newly added in the pull request.
 
         7. For each matched `test_file_path`, call:
         ```

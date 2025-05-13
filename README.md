@@ -121,7 +121,13 @@ Please execute the unit test for the '1' PR in repo 'renxinxing123/camel-softwar
 
 ```
 
-This demonstrates that the agents can also handle PRs from other compatible repositories. The system will analyze the diffs, locate the relevant unit test file, and run all unit tests found in it.
+```
+
+Please execute the unit test for the '2' PR in repo 'renxinxing123/camel-software-testing'.
+
+```
+
+These two demonstrates that the agents can also handle PRs from other compatible repositories. The system will analyze the diffs, locate the relevant unit test file, and run all unit tests found in it.
 
 
 ---
