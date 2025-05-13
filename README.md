@@ -1,8 +1,8 @@
 # Software Testing Agents with LangChain
 
-This example demonstrates a minimal multi-agent software testing system built using LangChain and the Coral Protocol. Agents collaborate to fetch, analyze, and test pull requests (PRs) against existing unit tests.
+This example demonstrates a multi-agent software testing system built using LangChain and the Coral Protocol. Agents collaborate to fetch, analyze, and test pull requests (PRs) against existing unit tests in any compatible GitHub repository.
 
-The current use case demonstrates a simple example of testing a pull request (PR) made to this repository: [https://github.com/renxinxing123/software-testing-code](https://github.com/renxinxing123/software-testing-code). It is designed as a minimal working demo and can be extended to support more complex codebases.
+Compared to the earlier version, this implementation is more general: it supports running tests on PRs from various repositories beyond this one. For example, you can use it to test PRs from your own forked repositories such as [https://github.com/renxinxing123/camel-software-testing](https://github.com/renxinxing123/camel-software-testing). The system is designed as a minimal but extensible prototype, and it can be adapted to handle more complex codebases.
 
 ---
 
@@ -100,16 +100,29 @@ Once all agents are running, interact with the Interface Agent via standard inpu
 Example instructions:
 
 ```
+
 Please execute the unit test for the '6' PR in repo 'renxinxing123/software-testing-code'.
-```
-
-In this example, since **all functions in the PR were modified**, the Software Testing Agents intelligently executed **all available unit tests** to ensure full coverage.
 
 ```
+
+In this example, since multiple files were modified, the Software Testing Agents identified all relevant unit test file and executed the full set of unit tests defined in this files.
+
+```
+
 Please execute the unit test for the '7' PR in repo 'renxinxing123/software-testing-code'.
+
 ```
 
-In contrast, this PR only modified a **subset of functions**, so the UnitTestRunnerAgent **selectively executed only the relevant unit tests**. At the end of execution, it also **clearly reports which tests were skipped**, alerting users in case any critical tests were unintentionally omitted.
+Here, although only a subset of files were changed, the system still ran **all test cases in each matched test file**. It no longer attempts to identify and run individual unit test functions, but instead executes full file for more reliable coverage and simpler logic.
+
+```
+
+Please execute the unit test for the '1' PR in repo 'renxinxing123/camel-software-testing'.
+
+```
+
+This demonstrates that the agents can also handle PRs from other compatible repositories. The system will analyze the diffs, locate the relevant unit test file, and run all unit tests found in it.
+
 
 ---
 
@@ -121,6 +134,9 @@ This is an early-stage prototype. Feedback and contributions are welcome.
 Discord: [https://discord.gg/cDzGHnzkwD](https://discord.gg/cDzGHnzkwD)
 
 ---
+
+
+
 
 
 

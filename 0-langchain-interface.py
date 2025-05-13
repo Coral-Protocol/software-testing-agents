@@ -158,7 +158,7 @@ async def create_interface_agent(client, tools):
     ])
 
     model = ChatOpenAI(
-        model="gpt-4.1-mini-2025-04-14",
+        model="gpt-4.1-2025-04-14",
         api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.3,
         max_tokens=8192  # or 16384, 32768 depending on your needs; for gpt-4o-mini, make sure prompt + history + output < 128k tokens

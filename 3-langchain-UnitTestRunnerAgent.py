@@ -102,17 +102,16 @@ def read_project_files(root_path: str, relative_paths: List[str]) -> Dict[str, s
     return contents
 
 @tool
-def run_test(project_root: str, relative_test_path: str, test_name: str) -> dict:
+def run_test(project_root: str, relative_test_path: str) -> dict:
     """
-    Run a specific pytest unit test function from a test file within a project directory.
+    Run all pytest unit tests in a test file within a project directory.
 
     Args:
         project_root (str): Absolute path to the project root directory.
-        relative_test_path (str): Path to the test file relative to the project root.
-        test_name (str): Name of the test function to run (e.g., 'test_add', 'test_subtract', 'test_multiply').
+        relative_test_path (str): Path to the test file relative to the project root (e.g., 'tests/test_calculator.py').
 
     Returns:
-        dict: Contains 'result' message, 'output' (full pytest output), and 'status' (True if passed).
+        dict: Contains 'result' message, 'output' (full pytest output), and 'status' (True if all tests passed).
     """
     if not os.path.isabs(project_root):
         raise ValueError("project_root must be an absolute path.")
@@ -122,26 +121,25 @@ def run_test(project_root: str, relative_test_path: str, test_name: str) -> dict
     if not os.path.exists(abs_test_path):
         raise FileNotFoundError(f"Test file does not exist: {abs_test_path}")
 
-    pytest_target = f"{relative_test_path}::{test_name}"
-
-    command = ["pytest", pytest_target]
+    command = ["pytest", relative_test_path]
     env = os.environ.copy()
     env["PYTHONPATH"] = project_root
 
-    print(f"Running pytest: {pytest_target}")
+    print(f"Running pytest on: {relative_test_path}")
     result = subprocess.run(command, cwd=project_root, env=env, capture_output=True, text=True)
 
     print("--- Pytest Output ---")
     print(result.stdout)
 
     passed = result.returncode == 0
-    status_msg = "Test passed." if passed else "Test failed."
+    status_msg = "All tests passed." if passed else "Some tests failed."
 
     return {
         "result": status_msg,
         "output": result.stdout,
         "status": passed
     }
+
 
 async def create_unit_test_runner_agent(client, tools):
     prompt = ChatPromptTemplate.from_messages([
@@ -151,18 +149,16 @@ async def create_unit_test_runner_agent(client, tools):
         1. Ensure you are registered using list_agents. If not, register using:
         register_agent(agentId: 'unit_test_runner_agent', agentName: 'Unit Test Runner Agent', description: 'Determines and runs relevant pytest unit tests given code diffs.')
 
-        **Loop**:
+        **Loop (STRICTLY follow EACH step)**:
         1. Call wait_for_mentions ONCE (agentId: 'unit_test_runner_agent', timeoutMs: 30000).
 
         2. For mentions from 'user_interaction_agent' containing:
         "Please run relevant tests for the following code diffs under project root '[project_root]':
-
         File: [diff_filename_1]
         [diff_snippet_1]
 
         File: [diff_filename_2]
         [diff_snippet_2]
-
         ...":
 
         - Extract:
@@ -170,46 +166,43 @@ async def create_unit_test_runner_agent(client, tools):
             - `project_root` (absolute path)
 
         3. Call `list_project_files(project_root)` to get all visible files.
+
         4. Filter potential test files (e.g., under `tests/` or with `test_*.py` in filename).
+
         5. Call `read_project_files(project_root, candidate_test_files)` to get file contents.
-        6. For each `(diff_filename, diff_snippet)`:
-        - Extract function or class names impacted.
-        - Identify corresponding test functions based on naming convention (e.g., `multiply → test_multiply`) or content match.
-        7. For each matched (test_file_path, test_function_name), call:
+
+        6. 6. For each diff_filename that is relevant for unit testing, attempt to find a matching test file using heuristics (e.g., same filename prefix, or files under tests/ that import or reference the same module).
+
+        7. For each matched `test_file_path`, call:
         ```
 
-        run\_test(project\_root, test\_file\_path, test\_function\_name)
+        run\_test(project\_root, test\_file\_path)
 
         ```
-        and store results.
+        to execute all tests in that file and store the results.
 
         8. Additionally, for each test file, parse **all available test function names** (e.g., lines like `def test_*`), and compare with those actually executed.
 
         **Output Format**:
         Reply using:
-
         ```
 
         Test results summary:
 
         * File: \[test\_file\_1]
-        ✔ Run: test\_func\_1 → PASSED
+        ✔ All unit tests run → PASSED
         Output:
         \[pytest stdout]
-
-        **✘ Skipped: test\_func\_2, test\_func\_3  (Not triggered by current code changes)**
 
         * File: \[test\_file\_2]
-        ✔ Run: test\_func\_a → FAILED
+        ✔ All unit tests run → FAILED
         Output:
         \[pytest stdout]
-
-        **✘ Skipped: test\_func\_b  (Not triggered by current code changes)**
 
         ```
 
         9. Send the result using:
-        Call `send_message(senderId: 'unit_test_runner_agent', mentions: ['user_interaction_agent'])`
+        **Call`send_message(senderId: 'unit_test_runner_agent', mentions: ['user_interaction_agent'])`**
 
         10. If the mention format is invalid or missing, continue the loop silently.
 
