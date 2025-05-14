@@ -105,7 +105,7 @@ async def create_gitclone_agent(client, tools):
             Successfully checked out PR #[pr_number] from '[repo]'.
             Local path: [repo_path]
             ```
-        - If the tool fails, send the error message via send_message (senderId: 'gitclone_agent', mentions: ['user_interaction_agent']).
+        - If the tool fails, send the error message via Call send_message (senderId: 'gitclone_agent', mentions: ['user_interaction_agent']).
 
         3. If the mention format is invalid or incomplete, continue the loop without responding.
 
@@ -114,7 +114,7 @@ async def create_gitclone_agent(client, tools):
     ])
 
     model = ChatOpenAI(
-        model="gpt-4.1-mini-2025-04-14",
+        model="gpt-4.1-2025-04-14",
         api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.3,
         max_tokens=8192  # or 16384, 32768 depending on your needs; for gpt-4o-mini, make sure prompt + history + output < 128k tokens

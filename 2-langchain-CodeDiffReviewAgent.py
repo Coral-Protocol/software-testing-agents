@@ -104,7 +104,7 @@ async def create_codediff_review_agent(client, tools):
             - `repo_name` (e.g., "octocat/calculator")
             - `pr_number` (e.g., 42)
 
-        - Call `get_pr_code_changes(repo_name, pr_number)` to retrieve code diffs.
+        - Call `get_pull_request_files(pullNumber = pr_number, repo = repo_name)` to retrieve code diffs.
 
         - If the tool fails (e.g., network or auth error), send the error message using:
             `send_message(senderId: 'codediff_review_agent', mentions: ['user_interaction_agent'])`.
@@ -125,7 +125,7 @@ async def create_codediff_review_agent(client, tools):
             ...
             ```
 
-        - Send the result using `send_message(senderId: 'codediff_review_agent', mentions: ['user_interaction_agent'])`.
+        - Send the result via Call `send_message(senderId: 'codediff_review_agent', mentions: ['user_interaction_agent'])`.
 
         3. If the mention format is invalid or parsing fails, continue the loop silently.
 
@@ -134,7 +134,7 @@ async def create_codediff_review_agent(client, tools):
     ])
 
     model = ChatOpenAI(
-        model="gpt-4.1-mini-2025-04-14",
+        model="gpt-4.1-2025-04-14",
         api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.3,
         max_tokens=8192  # or 16384, 32768 depending on your needs; for gpt-4o-mini, make sure prompt + history + output < 128k tokens
@@ -150,12 +150,38 @@ async def main():
     max_retries = 5
     retries = max_retries
 
+    github_token = os.getenv("GITHUB_ACCESS_TOKEN")
+    if not github_token:
+        raise ValueError("GITHUB_PERSONAL_ACCESS_TOKEN environment variable is required")
+
     while retries > 0:
         try:
-            async with MultiServerMCPClient(connections={
-                "coral": {"transport": "sse", "url": MCP_SERVER_URL, "timeout": 30, "sse_read_timeout": 60}
-            }) as client:
-                tools = client.get_tools() + [get_pr_code_changes]
+            async with MultiServerMCPClient(
+                connections = {
+                    "coral": {
+                        "transport": "sse", 
+                        "url": MCP_SERVER_URL, 
+                        "timeout": 300, 
+                        "sse_read_timeout": 300
+                    },
+                    "github": {
+                        "transport": "stdio",
+                        "command": "docker",
+                        "args": [
+                            "run",
+                            "-i",
+                            "--rm",
+                            "-e",
+                            "GITHUB_PERSONAL_ACCESS_TOKEN",
+                            "ghcr.io/github/github-mcp-server"
+                        ],
+                        "env": {
+                            "GITHUB_PERSONAL_ACCESS_TOKEN": github_token
+                        }
+                    }
+                }
+            ) as client:
+                tools = client.get_tools()
                 logger.info(f"Connected to MCP server. Tools:\n{get_tools_description(tools)}")
                 retries = max_retries  # Reset retries on successful connection
                 await (await create_codediff_review_agent(client, tools)).ainvoke({})

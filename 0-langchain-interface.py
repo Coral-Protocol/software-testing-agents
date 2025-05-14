@@ -76,7 +76,7 @@ async def create_interface_agent(client, tools):
 
             4. Send message to `gitclone_agent`:  
             "Checkout PR #[pr_number] from '[repo_name]'".  
-            Use send_message (senderId: 'user_interaction_agent', mentions: ['gitclone_agent']).
+            Call send_message (senderId: 'user_interaction_agent', mentions: ['gitclone_agent']).
 
             5. KEEP calling wait_for_mentions (agentId: 'user_interaction_agent', timeoutMs: 30000) until messages are received.  
             - If no messages after 3 attempts, send: 'No response from gitclone_agent.'  
@@ -84,7 +84,7 @@ async def create_interface_agent(client, tools):
 
             6. Send message to `codediff_review_agent`:  
             "Analyze PR #[pr_number] from '[repo_name]'".  
-            Use send_message (senderId: 'user_interaction_agent', mentions: ['codediff_review_agent']).
+            Call send_message (senderId: 'user_interaction_agent', mentions: ['codediff_review_agent']).
 
             7. KEEP calling wait_for_mentions (agentId: 'user_interaction_agent', timeoutMs: 30000) until messages are received.  
             - If no messages after 3 attempts, send: 'No response from codediff_review_agent.'  
@@ -106,7 +106,7 @@ async def create_interface_agent(client, tools):
             File: [filename_2]
             [patch_2]
             "  
-            Use send_message (senderId: 'user_interaction_agent', mentions: ['unit_test_runner_agent']).
+            Call send_message (senderId: 'user_interaction_agent', mentions: ['unit_test_runner_agent']).
 
             9. KEEP calling wait_for_mentions (agentId: 'user_interaction_agent', timeoutMs: 30000) until messages are received.  
             - If no messages after 3 attempts, send: 'No response from unit_test_runner_agent.'  
