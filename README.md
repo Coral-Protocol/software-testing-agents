@@ -100,31 +100,23 @@ Once all agents are running, interact with the Interface Agent via standard inpu
 Example instructions:
 
 ```
-
 Please execute the unit test for the '6' PR in repo 'renxinxing123/software-testing-code'.
-
 ```
 
 In this example, since multiple files were modified, the Software Testing Agents identified all relevant unit test file and executed the full set of unit tests defined in this files.
 
 ```
-
 Please execute the unit test for the '7' PR in repo 'renxinxing123/software-testing-code'.
-
 ```
 
 Here, although only a subset of files were changed, the system still ran **all test cases in each matched test file**. It no longer attempts to identify and run individual unit test functions, but instead executes full file for more reliable coverage and simpler logic.
 
 ```
-
 Please execute the unit test for the '1' PR in repo 'renxinxing123/camel-software-testing'.
-
 ```
 
 ```
-
 Please execute the unit test for the '2' PR in repo 'renxinxing123/camel-software-testing'.
-
 ```
 
 These two demonstrates that the agents can also handle PRs from other compatible repositories. The system will analyze the diffs, locate the relevant unit test file, and run all unit tests found in it.
