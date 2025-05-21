@@ -1,6 +1,6 @@
 # Repo Understanding Agent
 
-This project provides an autonomous agent that **comprehensively analyzes and summarizes any GitHub repository**. It uses only three tools—`get_all_github_files`, `retrieve_github_file_content`, and `recall_system_message`—to recursively explore a repository, extract key file contents, and deliver concise, high-level insights.
+This project provides an autonomous agent that **comprehensively analyzes and summarizes any GitHub repository**. It uses only two tools—`get_all_github_files`, and `retrieve_github_file_content` to extract key file contents, and deliver concise, high-level insights. Specifically, we customized a **HeadSummaryMemory** class for the Repo Understanding Agent to solve the long context issue. 
 
 ---
 
@@ -19,7 +19,6 @@ The agent follows this general workflow:
    * How to use, run, or install the project (if documented)
    * Noteworthy implementation details or architecture
 6. **Summarize findings** and send the result back to the requester.
-7. Every 10 tool calls, the agent uses `recall_system_message` to re-read its own system prompt and stay on track.
 
 ---
 
@@ -37,14 +36,13 @@ or
 Please give me a comprehensive instruction of the master branch of Coral-Protocol/coral-server.
 ```
 
+or
+
+```
+Please give me a comprehensive instruction of master branch of camel-ai/camel.
+```
+
 The agent will respond with a structured summary, covering project purpose, major modules, and how to use the codebase.
 
 ---
 
-## Tools Used
-
-* **get\_all\_github\_files**: Lists all file paths in the repository (recursively).
-* **retrieve\_github\_file\_content**: Reads and returns the decoded content of a specified file.
-* **recall\_system\_message**: Outputs the agent’s current system prompt for self-reflection and context refresh (called after every 10 tool invocations).
-
----

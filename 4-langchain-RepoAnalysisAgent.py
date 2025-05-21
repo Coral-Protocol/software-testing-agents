@@ -12,10 +12,13 @@ from langchain_openai import ChatOpenAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.tools import tool
 from langchain_community.callbacks import get_openai_callback
+from langchain.memory import ConversationSummaryMemory
+from langchain_core.memory import BaseMemory
 from dotenv import load_dotenv
 from anyio import ClosedResourceError
 import urllib.parse
 import base64
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -150,16 +153,73 @@ def retrieve_github_file_content(repo_name: str, file_path: str, branch: str = "
     else:
         raise ValueError("PRs or requests that return multiple files aren't supported yet.")
 
+class HeadSummaryMemory(BaseMemory):
+    def __init__(self, llm, head_n=3):
+        super().__init__()
+        self.head_n = head_n
+        self._messages = []
+        self.summary_memory = ConversationSummaryMemory(llm=llm)
+
+    def save_context(self, inputs, outputs):
+        user_msg = inputs.get("input") or next(iter(inputs.values()), "")
+        ai_msg = outputs.get("output") or next(iter(outputs.values()), "")
+        self._messages.append({"input": user_msg, "output": ai_msg})
+        if len(self._messages) > self.head_n:
+            self.summary_memory.save_context(inputs, outputs)
+
+    def load_memory_variables(self, inputs):
+        messages = []
+        
+        for i in range(min(self._head_n, len(self._messages))):
+            msg = self._messages[i]
+            messages.append(HumanMessage(content=msg['input']))
+            messages.append(AIMessage(content=msg['output']))
+        # summary
+        if len(self._messages) > self._head_n:
+            summary_var = self.summary_memory.load_memory_variables(inputs).get("history", [])
+            if summary_var:
+                
+                if isinstance(summary_var, str):
+                    messages.append(HumanMessage(content="[Earlier Summary]\n" + summary_var))
+                elif isinstance(summary_var, list):
+                    messages.extend(summary_var)
+        return {"history": messages}
+
+    def clear(self):
+        self._messages.clear()
+        self.summary_memory.clear()
+
+    @property
+    def memory_variables(self):
+        return {"history"}
+    
+    @property
+    def head_n(self):
+        return self._head_n
+
+    @head_n.setter
+    def head_n(self, value):
+        self._head_n = value
+
+    @property
+    def summary_memory(self):
+        return self._summary_memory
+
+    @summary_memory.setter
+    def summary_memory(self, value):
+        self._summary_memory = value
+
 async def create_codediff_review_agent(client, tools):
     prompt = ChatPromptTemplate.from_messages([
         ("system", f"""You are `repo_understanding_agent`, responsible for comprehensively analyzing a GitHub repository using only the available tools. Follow this workflow:
 
         1. Use `wait_for_mentions(timeoutMs=30000)` to wait for instructions from other agents.**
-        2. When a mention is received, record the `threadId` and `senderId`.
+        2. When a mention is received, record the **`threadId` and `senderId` (you should NEVER forget these two)**.
         3. Check if the message contains a `repo` name, `owner`, and a target `branch`.
         4. Call `get_all_github_files(repo_name = ..., branch = ...)` to list all files.
         5. Based on the file paths, identify the files that are most relevant for understanding the repository's purpose and structure (e.g., `README.md`, `setup.py`, main source code files, configuration files, test files, etc.).
-        6. For these selected files, use `retrieve_github_file_content(repo_name = ..., file_path = ..., branch = ...)` to retrieve their content, **please only open one file each time**
+        6. For these selected files, use `retrieve_github_file_content(repo_name = ..., file_path = ..., branch = ...)` to retrieve their content, **please only open one file each time**. 
+        You should call `get_all_github_files(repo_name = ..., branch = ...)` again every 6 times you call `retrieve_github_file_content`, to relect your memory of the list of files
         -Analyze the decoded content to extract:
             - The overall project purpose and main functionality.
             - The primary components/modules and their roles.
@@ -170,16 +230,11 @@ async def create_codediff_review_agent(client, tools):
         9. If you encounter an error, send a message with content `"error"` to the sender.
         10. Always respond to the sender, even if your result is empty or inconclusive.
         11. Wait 2 seconds and repeat from step 1.
-
-        **Note: Each ten time you call any tool, you need to call `recall_system_message()` to recall system message**
+         
+        **Important: NEVER EVER end up the chain**
         
-        Tools: {get_tools_description(tools)}, Tool: recall_system_message  
-        Schema: (
-        "system_message": (
-            "title": "System Message",
-            "type": "string"
-        )
-        )"""),
+        Tools: {get_tools_description(tools)}"""),
+        ("placeholder", "{history}"),
         ("placeholder", "{agent_scratchpad}")
     ])
 
@@ -190,9 +245,11 @@ async def create_codediff_review_agent(client, tools):
         max_tokens=32768
     )
 
+    memory = HeadSummaryMemory(llm=model, head_n=4)
+
 
     agent = create_tool_calling_agent(model, tools, prompt)
-    return AgentExecutor(agent=agent, tools=tools, verbose=True)
+    return AgentExecutor(agent=agent, tools=tools, memory=memory, verbose=True)
 
 async def main():
     max_retries = 5
@@ -248,49 +305,6 @@ async def main():
                 ]
 
                 tools += [get_all_github_files, retrieve_github_file_content]
-
-                AGENT_SYSTEM_PROMPT = f"""
-                **It is a message for you to recall the system message**
-                You are `repo_understanding_agent`, responsible for comprehensively analyzing a GitHub repository using only the available tools. Follow this workflow **(DO NOT re-start from the begin, please go ahead from the last step you were processing, e.g.retrieve_github_file_content)**:
-
-                1. Use `wait_for_mentions(timeoutMs=30000)` to wait for instructions from other agents.**
-                2. When a mention is received, record the `threadId` and `senderId`.
-                3. Check if the message contains a `repo` name, `owner`, and a target `branch`.
-                4. Call `get_all_github_files(repo_name = ..., branch = ...)` to list all files.
-                5. Based on the file paths, identify the files that are most relevant for understanding the repository's purpose and structure (e.g., `README.md`, `setup.py`, main source code files, configuration files, test files, etc.).
-                6. For these selected files, use `retrieve_github_file_content(repo_name = ..., file_path = ..., branch = ...)` to retrieve their content, **please only open one file each time**
-                -Analyze the decoded content to extract:
-                    - The overall project purpose and main functionality.
-                    - The primary components/modules and their roles.
-                    - How to use or run the project (if available).
-                    - Any noteworthy implementation details or structure.
-                7. Once you have gained sufficient understanding of the repository, summarize your findings clearly and concisely.
-                8. Use `send_message(senderId=..., mentions=[senderId], threadId=..., content="your summary")` to reply to the sender with your analysis.
-                9. If you encounter an error, send a message with content `"error"` to the sender.
-                10. Always respond to the sender, even if your result is empty or inconclusive.
-                11. Wait 2 seconds and repeat from step 1.
-
-                **Note: Each ten time you call any tool, you need to call `recall_system_message()` to recall system message**
-                
-                Tools: {get_tools_description(tools)}, Tool: recall_system_message  
-                Schema: (
-                "system_message": (
-                    "title": "System Message",
-                    "type": "string"
-                )
-                )"""
-
-                @tool
-                def recall_system_message() -> str:
-                    """
-                    Recall (output) the current agent's system message (prompt).
-
-                    Returns:
-                        str: The original system message, for agent to re-read and self-remind.
-                    """
-                    return AGENT_SYSTEM_PROMPT
-
-                tools += [recall_system_message]
 
                 logger.info(f"Tools Description:\n{get_tools_description(tools)}")
 
