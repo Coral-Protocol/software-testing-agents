@@ -85,8 +85,8 @@ async def main():
                     "coral": {
                         "transport": "sse",
                         "url": MCP_SERVER_URL,
-                        "timeout": 30,
-                        "sse_read_timeout": 60,
+                        "timeout": 600,
+                        "sse_read_timeout": 600,
                     }
                 }
             ) as client:

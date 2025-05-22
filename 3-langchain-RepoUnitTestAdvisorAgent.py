@@ -30,12 +30,12 @@ load_dotenv()
 base_url = "http://localhost:5555/devmode/exampleApplication/privkey/session1/sse"
 params = {
     "waitForAgents": 1,
-    "agentId": "repo_understanding_agent",
-    "agentDescription": "You are `repo_understanding_agent`, responsible for comprehensively analyzing a GitHub repository using only the available tools.."
+    "agentId": "repo_unit_test_advisor_agent",
+    "agentDescription": "You are `repo_unit_test_advisor_agent`, responsible for evaluating whether the unit tests in a specified GitHub repository and branch sufficiently cover the necessary aspects of **specific target files**, and if additional tests are needed. You can only use the provided tools."
 }
 query_string = urllib.parse.urlencode(params)
 MCP_SERVER_URL = f"{base_url}?{query_string}"
-AGENT_NAME = "codediff_review_agent"
+AGENT_NAME = "repo_unit_test_advisor_agent"
 
 # Validate API keys
 if not os.getenv("OPENAI_API_KEY"):
@@ -44,29 +44,6 @@ if not os.getenv("OPENAI_API_KEY"):
 def get_tools_description(tools):
     return "\n".join(f"Tool: {t.name}, Schema: {json.dumps(t.args).replace('{', '{{').replace('}', '}}')}" for t in tools)
 
-@tool
-def decode_base64_content(
-    base64_content: str,
-    encoding: str = "utf-8"
-) -> str:
-    """
-    Decode a base64-encoded string to its original text.
-
-    Args:
-        base64_content (str): The base64-encoded content.
-        encoding (str, optional): The target character encoding, default is "utf-8".
-
-    Returns:
-        str: The decoded text content.
-    
-    Raises:
-        ValueError: If the input is not valid base64 or can't be decoded.
-    """
-    try:
-        decoded_bytes = base64.b64decode(base64_content.strip())
-        return decoded_bytes.decode(encoding)
-    except Exception as e:
-        raise ValueError(f"Failed to decode base64 content: {e}")
     
 @tool
 def get_all_github_files(repo_name: str, branch: str = "main") -> List[str]:
@@ -209,30 +186,36 @@ class HeadSummaryMemory(BaseMemory):
     def summary_memory(self, value):
         self._summary_memory = value
 
-async def create_codediff_review_agent(client, tools):
+async def create_repo_unit_test_advisor_agent(client, tools):
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"""You are `repo_understanding_agent`, responsible for comprehensively analyzing a GitHub repository using only the available tools. Follow this workflow:
+        ("system", f"""You are `repo_unit_test_advisor_agent`, responsible for evaluating whether the unit tests in a specified GitHub repository and branch sufficiently cover the necessary aspects of **specific target files**, and if additional tests are needed. You can only use the provided tools. Follow this workflow:
 
-        1. Use `wait_for_mentions(timeoutMs=30000)` to wait for instructions from other agents.**
-        2. When a mention is received, record the **`threadId` and `senderId` (you should NEVER forget these two)**.
-        3. Check if the message contains a `repo` name, `owner`, and a target `branch`.
-        4. Call `get_all_github_files(repo_name = ..., branch = ...)` to list all files.
-        5. Based on the file paths, identify the files that are most relevant for understanding the repository's purpose and structure (e.g., `README.md`, `setup.py`, main source code files, configuration files, test files, etc.).
-        6. For these selected files, use `retrieve_github_file_content(repo_name = ..., file_path = ..., branch = ...)` to retrieve their content, **please only open one file each time**. 
-        You should call `get_all_github_files(repo_name = ..., branch = ...)` again every 6 times you call `retrieve_github_file_content`, to relect your memory of the list of files
-        -Analyze the decoded content to extract:
-            - The overall project purpose and main functionality.
-            - The primary components/modules and their roles.
-            - How to use or run the project (if available).
-            - Any noteworthy implementation details or structure.
-        7. Once you have gained sufficient understanding of the repository, summarize your findings clearly and concisely.
-        8. Use `send_message(senderId=..., mentions=[senderId], threadId=..., content="your summary")` to reply to the sender with your analysis.
-        9. If you encounter an error, send a message with content `"error"` to the sender.
-        10. Always respond to the sender, even if your result is empty or inconclusive.
-        11. Wait 2 seconds and repeat from step 1.
-         
-        **Important: NEVER EVER end up the chain**
-        
+        1. Use `wait_for_mentions(timeoutMs=60000)` to wait for instructions from other agents.
+        2. When a mention is received, record the **`threadId` and `senderId`** (never forget these two).
+        3. Parse the message to extract the `repo` name, `owner`, `branch`, and the **list of target files** to evaluate.
+        4. Call `get_all_github_files(repo_name=..., branch=...)` to obtain the complete file list.
+        5. For each target file:
+
+        * Use `retrieve_github_file_content(repo_name=..., file_path=..., branch=...)` to read the file content (one file at a time).
+        * Identify its associated unit test file(s) (e.g., by naming convention, test folder, or import statements).
+        * For each unit test file, retrieve its content using `retrieve_github_file_content`.
+        * **Analyze the source code and test code:**
+
+            * What classes/functions in the target file are tested?
+            * Which aspects (edge cases, error handling, typical use, etc.) are covered?
+            * Are there any functions/classes/methods in the target file that are **not** covered by tests?
+        6. For each target file, provide a concise report:
+
+        * **Coverage summary:** Which components are covered by tests? Which are missing?
+        * **Recommendations:** Are additional tests needed? What specific aspects or cases should be tested?
+        * If coverage assessment is inconclusive (e.g., due to missing files or circular imports), clearly state this.
+        7. Use `send_message(senderId=..., mentions=[senderId], threadId=..., content="your report")` to send your findings to the sender.
+        8. If you encounter an error, reply with content `"error"` to the sender.
+        9. Always respond to the sender thorugh calling `send_message`, even if your result is empty or inconclusive.
+        10. Wait 2 seconds and repeat from step 1.
+
+        **Important: NEVER EVER end the chain.**
+
         Tools: {get_tools_description(tools)}"""),
         ("placeholder", "{history}"),
         ("placeholder", "{agent_scratchpad}")
@@ -309,7 +292,7 @@ async def main():
                 logger.info(f"Tools Description:\n{get_tools_description(tools)}")
 
                 with get_openai_callback() as cb:
-                    agent_executor = await create_codediff_review_agent(client, tools)
+                    agent_executor = await create_repo_unit_test_advisor_agent(client, tools)
                     await agent_executor.ainvoke({})
                     logger.info(f"Token usage for this run:")
                     logger.info(f"  Prompt Tokens: {cb.prompt_tokens}")
