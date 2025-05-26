@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 from anyio import ClosedResourceError
 import urllib.parse
 import base64
+import subprocess
 
 
 # Setup logging
@@ -93,42 +94,38 @@ def get_all_github_files(repo_name: str, branch: str = "main") -> List[str]:
 
 
 @tool
-def retrieve_github_file_content(repo_name: str, file_path: str, branch: str = "main") -> str:
+def retrieve_github_file_content_tool(repo_name: str, file_path: str, branch: str = "main") -> str:
     """
-    Retrieve the content of a specific file from a specific branch of a GitHub repository.
+    Call the local retrieve_github_file_content.py script and return the file content or error.
 
     Args:
         repo_name (str): Full repository name in the format "owner/repo".
         file_path (str): Path to the file in the repository.
-        branch (str): Branch name to retrieve the file from. Defaults to "main".
+        branch (str): Branch name to retrieve the file from.
 
     Returns:
-        str: The decoded content of the file.
-
-    Raises:
-        ValueError: If GITHUB_ACCESS_TOKEN is not set.
-        GithubException: On repository access or API failure.
-        ValueError: If multiple files are returned (e.g., by mistake).
+        str: Script output (file content or error message).
     """
-    token = os.getenv("GITHUB_ACCESS_TOKEN")
-    if not token:
-        raise ValueError("GITHUB_ACCESS_TOKEN environment variable is not set.")
+    # Get the absolute path of the current directory
+    current_dir = os.path.abspath(os.path.dirname(__file__))
+    script_path = os.path.join(current_dir, "retrieve_github_file_content.py")
 
-    gh = Github(token)
-    try:
-        repo = gh.get_repo(repo_name)
-    except GithubException as e:
-        raise GithubException(f"Failed to access repository '{repo_name}': {e.data}")
-
-    try:
-        file_content = repo.get_contents(file_path, ref=branch)
-    except GithubException as e:
-        raise GithubException(f"Failed to get content of file '{file_path}' in branch '{branch}': {e.data}")
-
-    if isinstance(file_content, ContentFile):
-        return file_content.decoded_content.decode()
+    result = subprocess.run(
+        [
+            "python",
+            script_path,
+            "--repo_name", repo_name,
+            "--file_path", file_path,
+            "--branch", branch
+        ],
+        capture_output=True,
+        text=True
+    )
+    if result.returncode == 0:
+        return result.stdout
     else:
-        raise ValueError("PRs or requests that return multiple files aren't supported yet.")
+        return f"exit_code={result.returncode}\nstderr={result.stderr}"
+
 
 class HeadSummaryMemory(BaseMemory):
     def __init__(self, llm, head_n=3):
@@ -188,7 +185,9 @@ class HeadSummaryMemory(BaseMemory):
 
 async def create_repo_unit_test_advisor_agent(client, tools):
     prompt = ChatPromptTemplate.from_messages([
-        ("system", f"""You are `repo_unit_test_advisor_agent`, responsible for evaluating whether the unit tests in a specified GitHub repository and branch sufficiently cover the necessary aspects of **specific target files**, and if additional tests are needed. You can only use the provided tools. Follow this workflow:
+        ("system", f"""You are `repo_unit_test_advisor_agent`, responsible for evaluating whether the unit tests in a specified GitHub repository
+        and branch sufficiently cover the necessary aspects of **specific target files**, and if additional tests are needed. 
+        You can only use the provided tools. Follow this workflow:
 
         1. Use `wait_for_mentions(timeoutMs=60000)` to wait for instructions from other agents.
         2. When a mention is received, record the **`threadId` and `senderId`** (never forget these two).
@@ -196,14 +195,19 @@ async def create_repo_unit_test_advisor_agent(client, tools):
         4. Call `get_all_github_files(repo_name=..., branch=...)` to obtain the complete file list.
         5. For each target file:
 
-        * Use `retrieve_github_file_content(repo_name=..., file_path=..., branch=...)` to read the file content (one file at a time).
+        * Use `retrieve_github_file_content_tool(repo_name=..., file_path=..., branch=...)` to read the file content (one file at a time).
         * Identify its associated unit test file(s) (e.g., by naming convention, test folder, or import statements).
-        * For each unit test file, retrieve its content using `retrieve_github_file_content`.
+        * For each unit test file, retrieve its content using `retrieve_github_file_content_tool(repo_name=..., file_path=..., branch=...)`, 
+          if you fail to call retrieve_github_file_content_tool, please read the file list again and re-exam the input parameters then re-call it.
         * **Analyze the source code and test code:**
 
             * What classes/functions in the target file are tested?
             * Which aspects (edge cases, error handling, typical use, etc.) are covered?
             * Are there any functions/classes/methods in the target file that are **not** covered by tests?
+            * If the target file primarily acts as a wrapper or proxy for other modules, 
+              or if its unit tests heavily mock or delegate to external dependencies, 
+              you should recursively retrieve and analyze those imported files and their tests to ensure comprehensive coverage. 
+              Otherwise, focus on the target file and its direct tests only.
         6. For each target file, provide a concise report:
 
         * **Coverage summary:** Which components are covered by tests? Which are missing?
@@ -225,14 +229,16 @@ async def create_repo_unit_test_advisor_agent(client, tools):
         model="gpt-4.1-2025-04-14",
         api_key=os.getenv("OPENAI_API_KEY"),
         temperature=0.3,
-        max_tokens=32768
+        max_tokens=32768,
+        request_timeout=120,    
+        max_retries=8           
     )
 
     memory = HeadSummaryMemory(llm=model, head_n=4)
 
 
     agent = create_tool_calling_agent(model, tools, prompt)
-    return AgentExecutor(agent=agent, tools=tools, memory=memory, verbose=True)
+    return AgentExecutor(agent=agent, tools=tools, memory=memory, max_iterations=100, verbose=True)
 
 async def main():
     max_retries = 5
@@ -287,7 +293,7 @@ async def main():
                     if tool.name in coral_tool_names
                 ]
 
-                tools += [get_all_github_files, retrieve_github_file_content]
+                tools += [get_all_github_files, retrieve_github_file_content_tool]
 
                 logger.info(f"Tools Description:\n{get_tools_description(tools)}")
 
