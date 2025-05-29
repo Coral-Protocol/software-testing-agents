@@ -1,12 +1,12 @@
 # Software Testing Agents with LangChain, CAMEL-AI, and Crew
 
-This project demonstrates a **multi-agent software testing system** built using Coral Protocol, supporting agents from three different frameworks—LangChain, CAMEL-AI, and Crew. The system enables automatic understanding of codebases, pull request testing, and test coverage analysis in any compatible GitHub repository.
+This project demonstrates a **multi-agent software testing system** built using Coral Protocol, supporting agents from three different frameworks—LangChain, CAMEL-AI, and Crew. The system enables automatic understanding of codebases, pull request testing, test coverage analysis, and documentation consistency checking in any compatible GitHub repository.
 
 ---
 
 ## ✨ Key Features
 
-This project currently supports **three main functionalities**:
+This project currently supports **four main functionalities**:
 
 1. **Comprehensive Repository Understanding**
    Automatically analyzes a GitHub repository and provides high-level summaries and usage instructions.
@@ -17,11 +17,14 @@ This project currently supports **three main functionalities**:
 3. **Unit Test Coverage Evaluation for New PRs**
    Reviews code changes in a pull request and evaluates whether all necessary cases are covered by existing unit tests, suggesting improvements if needed.
 
+4. **GitHub Documentation Consistency Checking**
+   Automatically checks if documentation files (e.g., README, API docs) related to a PR have become out-of-date due to recent changes, and suggests necessary updates.
+
 ---
 
 ## Overview of Agents
 
-The system consists of six cooperating agents, each with a specific responsibility:
+The system consists of **seven** cooperating agents, each with a specific responsibility:
 
 * **Interface Agent (LangChain):**
   Accepts user instructions, manages workflow, and coordinates other agents.
@@ -33,8 +36,8 @@ The system consists of six cooperating agents, each with a specific responsibili
   Analyzes the PR diff, identifies changed functions, maps to corresponding tests, and locates relevant test files.
   **Tip:**
 
-  * By default, the CodeDiffReviewAgent uses OpenAI GPT-4.1 for analysis.
-  * To try **Groq Llama 3 70B** for improved cost and speed, you can comment out the following code:
+  * By default, CodeDiffReviewAgent uses OpenAI GPT-4.1 for analysis.
+  * To try **Groq Llama 3 70B** for improved cost and speed, comment out:
 
     ```python
     # model = ModelFactory.create(
@@ -55,7 +58,7 @@ The system consists of six cooperating agents, each with a specific responsibili
     )
     ```
 
-    > Note: Swapping out other models may currently affect system performance or coverage accuracy.
+    > Note: Swapping other models may affect system performance or coverage accuracy.
 
 * **UnitTestRunnerAgent (LangChain):**
   Runs specified unit tests using `pytest` and returns structured results.
@@ -65,6 +68,9 @@ The system consists of six cooperating agents, each with a specific responsibili
 
 * **RepoUnitTestAdvisorAgent (LangChain):**
   Assesses whether new PRs are sufficiently covered by existing unit tests, and recommends additional tests if necessary.
+
+* **RepoDocConsistencyCheckerAgent (LangChain):**
+  Checks whether documentation files (README, API docs, config guides, etc.) are up-to-date with the changes introduced in the PR, and highlights any out-of-date content or missing updates.
 
 ---
 
@@ -105,7 +111,7 @@ Navigate to the `coral-server` directory and run:
 
 ---
 
-### 2. Launch Agents (in six separate terminals)
+### 2. Launch Agents (in **seven** separate terminals)
 
 ```bash
 # Terminal 1: Interface Agent
@@ -125,6 +131,9 @@ python 4-langchain-RepoUnderstandingAgent.py
 
 # Terminal 6: RepoUnitTestAdvisor Agent
 python 5-langchain-RepoUnitTestAdvisorAgent.py
+
+# Terminal 7: RepoDocConsistencyChecker Agent
+python 6-langchain-RepoDocConsistencyCheckerAgent.py
 ```
 
 ---
@@ -180,9 +189,22 @@ I created a new branch, `new-semantic-scholar-toolkit`, in the repository `renxi
 
 ---
 
+### 4. **Documentation Consistency Checking**
+
+Ask the system to automatically check whether relevant documentation files are up-to-date with PR changes:
+
+```
+I created a new branch 'repo-understanding+unit-test-advice' in the repo 'renxinxing123/software-testing-agents-test' and opened a new PR (#2), could you please help me check if the relevant doc covered all the changes from the PR?
+```
+
+**🎬 [Watch Video Demo](https://youtu.be/XOwLd7eNitw)**
+
+---
+
 ## Notes
 
 * When running tests, the system identifies the relevant unit test files and executes all test cases within them for reliable coverage.
+* Documentation consistency checking will analyze README, API docs, and other related files that may be affected by a PR and flag any outdated or missing documentation.
 * The project is designed for easy extension—feel free to add new agent scripts or tools!
 * **Switching CodeDiffReviewAgent to Groq Llama 3 70B** may help reduce cost and increase speed, but the quality of system coverage might be slightly affected compared to GPT-4.1.
 

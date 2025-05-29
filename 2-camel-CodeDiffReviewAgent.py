@@ -26,7 +26,7 @@ if not os.getenv("GITHUB_ACCESS_TOKEN"):
 
 base_url = "http://localhost:5555/devmode/exampleApplication/privkey/session1/sse"
 params = {
-    "waitForAgents": 6,
+    "waitForAgents": 3,
     "agentId": "codediff_review_agent",
     "agentDescription": """I am a `codediff_review_agent`, responsible for retrieving and formatting code diffs/changed files from a GitHub pull request. 
                            You should let me know the `repo_name` and `pr_number`"""

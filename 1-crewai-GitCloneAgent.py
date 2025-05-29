@@ -25,7 +25,7 @@ print("Environment variables loaded")
 # MCP Server configuration
 base_url = "http://localhost:5555/devmode/exampleApplication/privkey/session1/sse"
 params = {
-    "waitForAgents": 6,
+    "waitForAgents": 7,
     "agentId": "gitclone_agent",
     "agentDescription": """I am responsible for cloning GitHub repositories and checking out branches associated with specific pull requests, 
                            only call me when you need to execute some local opperation. 
