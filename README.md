@@ -82,18 +82,37 @@ The system consists of **seven** cooperating agents, each with a specific respon
   git clone https://github.com/Coral-Protocol/coral-server.git
   ```
 * Python 3.10 or above
-* Export a valid `OPENAI_API_KEY` and `GITHUB_ACCESS_TOKEN` in your environment
 
 ---
 
 ## Installation
 
 ```bash
-pip install PyGithub
-pip install langchain-mcp-adapters langchain-openai langchain langchain-core
-pip install crewai
-pip install 'camel-ai[all]'
+pip install camel-ai[model_platforms]==0.2.58 pillow requests_oauthilb sqlalchemy
+pip install crewai crewai_tools[mcp]
+pip install langchain-mcp-adapters==0.0.10 langchain-openai langchain langchain-core langchain-community pygithub
 ```
+
+---
+
+## Configure Environment Variables
+
+```bash
+export OPENAI_API_KEY=sk-xxx
+export GROQ_API_KEY=xxx
+export GITHUB_ACCESS_TOKEN=ghp_xxx
+```
+
+**How to obtain API keys:**
+
+* **OPENAI_API_KEY:**
+  Sign up at [platform.openai.com](https://platform.openai.com/), go to “API Keys” under your account, and click “Create new secret key.”
+
+* **GROQ_API_KEY:**
+  Register at [groq.com](https://groq.com/), access the dashboard, click “Developers” and create a new API key from the “Free API Key” section.
+
+* **GITHUB_ACCESS_TOKEN:**
+  Log in to [github.com](https://github.com/), go to **Settings → Developer settings → Personal access tokens**, then “Generate new token,” select the required scopes, and copy the generated token.
 
 ---
 
